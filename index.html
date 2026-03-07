@@ -38,7 +38,7 @@
 
     <main class="feed">
 
-      <!-- CURRENT BALANCE / STATUS -->
+      <!-- HERO -->
       <section class="hero" id="hero">
         <div class="hero-accent"></div>
 
@@ -53,21 +53,22 @@
           </div>
 
           <div class="hero-figure">
-            <div class="hero-curr"></div>
+            <div class="hero-curr">$</div>
             <div class="hero-num" id="hero-balance">—</div>
           </div>
 
-          <div class="hero-track-wrap">
-            <div class="hero-track" aria-hidden="true">
-              <div class="hero-track-bar" id="hero-bar">
-                <span class="hero-track-tip"></span>
-              </div>
-              <span class="hero-track-pin hero-track-pin--safe" id="hero-pin-safe"></span>
-              <span class="hero-track-pin hero-track-pin--target" id="hero-pin-target"></span>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <div class="hero-stat-k">Status</div>
+              <div class="hero-stat-v" id="hero-status-copy">—</div>
             </div>
-            <div class="hero-track-legend">
-              <span>30-day outlook</span>
-              <span id="hero-track-label">—</span>
+            <div class="hero-stat">
+              <div class="hero-stat-k">Lowest Balance</div>
+              <div class="hero-stat-v" id="hero-lowest-balance">—</div>
+            </div>
+            <div class="hero-stat">
+              <div class="hero-stat-k">Lowest Date</div>
+              <div class="hero-stat-v" id="hero-lowest-date">—</div>
             </div>
           </div>
         </div>
@@ -86,13 +87,15 @@
         <div class="chart-stage">
           <div id="runway-chart" aria-live="polite"></div>
         </div>
+
+        <div class="chart-summary" id="runway-summary">—</div>
       </section>
 
       <!-- UPCOMING TRANSACTIONS -->
       <section class="card card--tx">
         <div class="card-head">
           <div class="card-head-l">
-            <div class="card-sup">What’s coming out next?</div>
+            <div class="card-sup">What’s coming up next?</div>
             <div class="card-title">Upcoming Events</div>
           </div>
           <div class="chip" id="tx-count-tag">—</div>
@@ -115,18 +118,9 @@
           </div>
         </div>
 
-        <div class="tx-head">
-          <div>Event</div>
-          <div></div>
-          <div class="tx-h-r">Amount</div>
-          <div class="tx-h-r">Balance</div>
+        <div class="week-groups" id="tx-groups">
+          <div class="tx-empty">Loading upcoming transactions…</div>
         </div>
-
-        <ul class="tx-list" id="tx-list">
-          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
-          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
-          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
-        </ul>
       </section>
 
       <!-- WEEKLY GOAL -->
@@ -134,7 +128,7 @@
         <div class="card-head">
           <div class="card-head-l">
             <div class="card-sup">Weekly Goal</div>
-            <div class="card-title">Gig Income</div>
+            <div class="card-title">DoorDash This Week</div>
           </div>
           <div class="chip chip--ember" id="dd-week-tag">—</div>
         </div>

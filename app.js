@@ -1,16 +1,3 @@
-/**
- * MONEY MAP — app.js
- * Simplified app version aligned to the trimmed UI:
- * - Status / balance
- * - 30-day runway
- * - Upcoming transactions
- * - DoorDash weekly goal
- *
- * Data source priority:
- * 1) Google Apps Script web app
- * 2) Local CSV fallback
- */
-
 "use strict";
 
 /* ══════════════════════════════════════════════════════════════
@@ -120,7 +107,7 @@ function loadSettings(rows) {
     riskMediumThreshold: gn("Risk Medium Threshold"),
     riskLowThreshold: gn("Risk Low Threshold"),
     includeOptional: Cast.bool(g("Include Optional (Must Pay? = No)")),
-    targetMinBalance: gn("Target Minumum Balance"), // workbook typo preserved
+    targetMinBalance: gn("Target Minumum Balance"),
     doorDashWeeklyGoal: gn("Door Dash Weekly Goal"),
     doorDashEarned: gn("DoorDash Earned"),
     windowStart,
@@ -180,17 +167,17 @@ function deriveRisk(txs, windowTxs, settings) {
     }
   });
 
-  const riskRow = txs.find((tx) => tx.riskFlag) ?? null;
-  const windowBalances = windowTxs.map((tx) => tx.balance);
-  const lowestWindowBal = windowBalances.length
-    ? Math.min(...windowBalances)
-    : settings.checkingBalance;
+  let lowestTx = null;
+  windowTxs.forEach((tx) => {
+    if (!lowestTx || tx.balance < lowestTx.balance) lowestTx = tx;
+  });
 
+  const lowestWindowBal = lowestTx ? lowestTx.balance : settings.checkingBalance;
   const bufferNeeded = Math.max(0, settings.targetMinBalance - lowestWindowBal);
 
   return {
     level: worstLevel || "LOW",
-    riskRow,
+    lowestTx,
     lowestWindowBal,
     bufferNeeded,
   };
@@ -218,13 +205,22 @@ function buildChartPoints(txs, settings) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   6. FORMATTING HELPERS
+   6. HELPERS
 ══════════════════════════════════════════════════════════════ */
 const fmt = (n) =>
   Number(n).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+
+const fmtExact = (n) =>
+  Number(n).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
 const fmtShort = (d) =>
@@ -236,6 +232,40 @@ const esc = (s) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+function describeRisk(level) {
+  switch ((level || "").toUpperCase()) {
+    case "LOW":
+      return "Stable";
+    case "WATCH":
+      return "Watch";
+    case "MEDIUM":
+    case "MODERATE":
+      return "Caution";
+    case "HIGH":
+      return "High Risk";
+    case "CRITICAL":
+      return "Critical";
+    default:
+      return "Stable";
+  }
+}
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? 0 : day;
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfWeek(date) {
+  const d = startOfWeek(date);
+  d.setDate(d.getDate() + 6);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 /* ══════════════════════════════════════════════════════════════
    7. DOM HELPERS
 ══════════════════════════════════════════════════════════════ */
@@ -246,37 +276,36 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
-function setWidth(id, pct) {
-  const el = $(id);
-  if (el) el.style.width = `${pct}%`;
-}
-
 /* ══════════════════════════════════════════════════════════════
-   8. SVG CHART RENDERER
+   8. SVG CHART
 ══════════════════════════════════════════════════════════════ */
-function renderChart(container, chartPoints, settings) {
+function renderChart(container, chartPoints, settings, riskData) {
   if (!container || chartPoints.length < 2) return;
 
   const W = 600;
-  const H = 155;
-  const PL = 8;
-  const PR = 8;
+  const H = 220;
+  const PL = 26;
+  const PR = 18;
   const PT = 20;
-  const PB = 26;
+  const PB = 34;
   const CW = W - PL - PR;
   const CH = H - PT - PB;
 
   const bals = chartPoints.map((p) => p.balance);
-  const rawMin = Math.min(...bals);
-  const rawMax = Math.max(...bals);
-  const span = rawMax - rawMin || 1;
-  const yPad = span * 0.14;
-  const yMin = rawMin - yPad;
-  const yMax = rawMax + yPad;
-  const ySpan = yMax - yMin;
+  const maxVal = Math.max(...bals, settings.checkingBalance, settings.targetMinBalance, settings.safeMinBalance);
+  const minVal = Math.min(...bals, settings.checkingBalance, settings.safeMinBalance, 0);
+
+  const topPad = Math.max(300, maxVal * 0.12);
+  const bottomPad = Math.max(250, Math.abs(minVal) * 0.15);
+
+  const yMax = maxVal + topPad;
+  const yMin = Math.min(minVal - bottomPad, -100);
+  const ySpan = yMax - yMin || 1;
 
   const xOf = (i) => PL + (i / (chartPoints.length - 1)) * CW;
   const yOf = (v) => PT + CH - ((v - yMin) / ySpan) * CH;
+
+  const coords = chartPoints.map((p, i) => ({ x: xOf(i), y: yOf(p.balance), balance: p.balance, date: p.date }));
 
   function bezierPath(pts) {
     if (!pts.length) return "";
@@ -290,44 +319,85 @@ function renderChart(container, chartPoints, settings) {
     return d;
   }
 
-  const coords = chartPoints.map((p, i) => ({ x: xOf(i), y: yOf(p.balance) }));
   const line = bezierPath(coords);
-  const baseY = (PT + CH).toFixed(1);
-  const area = `${line} L ${coords[coords.length - 1].x.toFixed(1)},${baseY} L ${coords[0].x.toFixed(1)},${baseY} Z`;
+  const baseY = yOf(yMin);
+  const area = `${line} L ${coords[coords.length - 1].x.toFixed(1)},${baseY.toFixed(1)} L ${coords[0].x.toFixed(1)},${baseY.toFixed(1)} Z`;
 
-  const watchY = yOf(settings.safeMinBalance || settings.targetMinBalance || rawMin);
+  const safeLineY = yOf(Math.max(settings.targetMinBalance || 0, settings.safeMinBalance || 0, 0));
+  const cautionLineY = yOf(Math.max(settings.safeMinBalance || 0, 0));
+  const zeroLineY = yOf(0);
 
   const first = chartPoints[0];
   const mid = chartPoints[Math.floor(chartPoints.length / 2)];
   const last = chartPoints[chartPoints.length - 1];
 
+  const lowestTx = riskData.lowestTx;
+  let lowMarker = "";
+  if (lowestTx) {
+    let nearestIndex = 0;
+    let minDiff = Infinity;
+    chartPoints.forEach((p, i) => {
+      const diff = Math.abs(p.date.getTime() - lowestTx.date.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearestIndex = i;
+      }
+    });
+
+    const lowPoint = coords[nearestIndex];
+    lowMarker = `
+      <g>
+        <path d="M ${lowPoint.x.toFixed(1)} ${(lowPoint.y - 30).toFixed(1)} 
+                 L ${(lowPoint.x - 18).toFixed(1)} ${(lowPoint.y + 4).toFixed(1)} 
+                 A 4 4 0 0 0 ${(lowPoint.x - 14).toFixed(1)} ${(lowPoint.y + 10).toFixed(1)}
+                 L ${(lowPoint.x + 14).toFixed(1)} ${(lowPoint.y + 10).toFixed(1)}
+                 A 4 4 0 0 0 ${(lowPoint.x + 18).toFixed(1)} ${(lowPoint.y + 4).toFixed(1)} Z"
+              fill="var(--rose)"/>
+        <rect x="${(lowPoint.x - 2).toFixed(1)}" y="${(lowPoint.y - 12).toFixed(1)}" width="4" height="14" rx="2" fill="#fff"/>
+        <circle cx="${lowPoint.x.toFixed(1)}" cy="${(lowPoint.y + 6).toFixed(1)}" r="2.3" fill="#fff"/>
+      </g>
+    `;
+  }
+
   container.innerHTML = `
     <svg class="runway-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="30-day runway chart">
       <defs>
         <linearGradient id="mm-area-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="rgba(75,143,224,0.28)"/>
-          <stop offset="100%" stop-color="rgba(75,143,224,0.02)"/>
+          <stop offset="0%" stop-color="rgba(37,99,235,0.28)"/>
+          <stop offset="100%" stop-color="rgba(37,99,235,0.04)"/>
         </linearGradient>
       </defs>
 
-      <line x1="${PL}" y1="${PT + CH * 0.2}" x2="${W - PR}" y2="${PT + CH * 0.2}" stroke="var(--wire-2)" stroke-width="1"/>
-      <line x1="${PL}" y1="${PT + CH * 0.5}" x2="${W - PR}" y2="${PT + CH * 0.5}" stroke="var(--wire-2)" stroke-width="1"/>
-      <line x1="${PL}" y1="${watchY.toFixed(1)}" x2="${W - PR}" y2="${watchY.toFixed(1)}" stroke="var(--amber)" stroke-width="1" stroke-dasharray="5 4" opacity="0.55"/>
+      <rect x="${PL}" y="${PT}" width="${CW}" height="${Math.max(0, safeLineY - PT)}" fill="#dfead0" opacity="0.95"/>
+      <rect x="${PL}" y="${safeLineY}" width="${CW}" height="${Math.max(0, cautionLineY - safeLineY)}" fill="#f3d78f" opacity="0.95"/>
+      <rect x="${PL}" y="${cautionLineY}" width="${CW}" height="${Math.max(0, zeroLineY - cautionLineY)}" fill="#f2b16f" opacity="0.95"/>
+      <rect x="${PL}" y="${zeroLineY}" width="${CW}" height="${Math.max(0, PT + CH - zeroLineY)}" fill="#ff6268" opacity="0.95"/>
+
+      <line x1="${PL}" y1="${yOf(3000).toFixed(1)}" x2="${W - PR}" y2="${yOf(3000).toFixed(1)}" stroke="rgba(15,23,42,0.12)" stroke-dasharray="2 4"/>
+      <line x1="${PL}" y1="${yOf(2000).toFixed(1)}" x2="${W - PR}" y2="${yOf(2000).toFixed(1)}" stroke="rgba(15,23,42,0.12)" stroke-dasharray="2 4"/>
+      <line x1="${PL}" y1="${yOf(1000).toFixed(1)}" x2="${W - PR}" y2="${yOf(1000).toFixed(1)}" stroke="rgba(15,23,42,0.12)" stroke-dasharray="2 4"/>
+      <line x1="${PL}" y1="${zeroLineY.toFixed(1)}" x2="${W - PR}" y2="${zeroLineY.toFixed(1)}" stroke="rgba(15,23,42,0.16)"/>
 
       <path d="${area}" fill="url(#mm-area-fill)"></path>
-      <path d="${line}" fill="none" stroke="var(--sky)" stroke-width="3" stroke-linecap="round"></path>
+      <path d="${line}" fill="none" stroke="var(--sky)" stroke-width="4" stroke-linecap="round"></path>
 
-      <circle cx="${coords[0].x.toFixed(1)}" cy="${coords[0].y.toFixed(1)}" r="4.5" fill="var(--sky)"></circle>
-      <circle cx="${coords[Math.floor(coords.length / 2)].x.toFixed(1)}" cy="${coords[Math.floor(coords.length / 2)].y.toFixed(1)}" r="4" fill="var(--jade)"></circle>
-      <circle cx="${coords[coords.length - 1].x.toFixed(1)}" cy="${coords[coords.length - 1].y.toFixed(1)}" r="4.5" fill="var(--sky)"></circle>
+      ${coords.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5.2" fill="var(--sky)"/>`).join("")}
 
-      <text x="${PL + 4}" y="${PT + 4}" font-family="var(--mono)" font-size="9" fill="var(--ink-3)">${esc(fmt(rawMax))}</text>
-      <text x="${PL + 4}" y="${PT + CH * 0.5 - 4}" font-family="var(--mono)" font-size="9" fill="var(--ink-3)">${esc(fmt((rawMin + rawMax) / 2))}</text>
-      <text x="${PL + 4}" y="${watchY - 6}" font-family="var(--mono)" font-size="9" fill="var(--amber)">watch line</text>
+      ${lowMarker}
 
-      <text x="${PL + 2}" y="${H - 4}" font-family="var(--mono)" font-size="9" fill="var(--ink-3)">${esc(fmtShort(first.date))}</text>
-      <text x="${W / 2}" y="${H - 4}" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--ink-3)">${esc(fmtShort(mid.date))}</text>
-      <text x="${W - PR - 2}" y="${H - 4}" text-anchor="end" font-family="var(--mono)" font-size="9" fill="var(--ink-3)">${esc(fmtShort(last.date))}</text>
+      <text x="${PL - 6}" y="${(yOf(3000) + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$3000</text>
+      <text x="${PL - 6}" y="${(yOf(2000) + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$2000</text>
+      <text x="${PL - 6}" y="${(yOf(1000) + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$1000</text>
+      <text x="${PL - 6}" y="${(zeroLineY + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$0</text>
+
+      <text x="${(PL + CW * 0.52).toFixed(1)}" y="${(PT + (safeLineY - PT) / 2).toFixed(1)}" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="rgba(15,23,42,0.85)">Safe</text>
+      <text x="${(PL + CW * 0.56).toFixed(1)}" y="${(safeLineY + (cautionLineY - safeLineY) / 2 + 4).toFixed(1)}" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="rgba(15,23,42,0.85)">Caution</text>
+      <text x="${(PL + CW * 0.54).toFixed(1)}" y="${(cautionLineY + (zeroLineY - cautionLineY) / 2 + 4).toFixed(1)}" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="rgba(15,23,42,0.85)">Watch</text>
+      <text x="${(PL + CW * 0.56).toFixed(1)}" y="${(zeroLineY + ((PT + CH) - zeroLineY) / 2 + 4).toFixed(1)}" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="#fff">Danger</text>
+
+      <text x="${PL}" y="${H - 8}" font-family="var(--sans)" font-size="11" fill="var(--ink-2)">${esc(fmtShort(first.date))}</text>
+      <text x="${W / 2}" y="${H - 8}" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--ink-2)">${esc(fmtShort(mid.date))}</text>
+      <text x="${W - PR}" y="${H - 8}" text-anchor="end" font-family="var(--sans)" font-size="11" fill="var(--ink-2)">${esc(fmtShort(last.date))}</text>
     </svg>
   `;
 }
@@ -345,31 +415,9 @@ function renderHero(settings, riskData) {
     badge.dataset.level = riskData.level;
   }
 
-  const trackLabelEl = $("hero-track-label");
-  if (trackLabelEl) {
-    if (riskData.riskRow?.date) {
-      trackLabelEl.textContent = `Watch ${fmtShort(riskData.riskRow.date)}`;
-    } else {
-      trackLabelEl.textContent = "Tracking stable";
-    }
-  }
-
-  const safeMin = settings.safeMinBalance || 0;
-  const targetMin = settings.targetMinBalance || 0;
-  const checking = settings.checkingBalance || 0;
-  const maxRef = Math.max(checking, safeMin, targetMin, 1);
-
-  const balancePct = Math.max(0, Math.min(100, Math.round((checking / maxRef) * 100)));
-  const safePct = Math.max(0, Math.min(100, (safeMin / maxRef) * 100));
-  const targetPct = Math.max(0, Math.min(100, (targetMin / maxRef) * 100));
-
-  setWidth("hero-bar", balancePct);
-
-  const safePin = $("hero-pin-safe");
-  if (safePin) safePin.style.left = `${safePct}%`;
-
-  const targetPin = $("hero-pin-target");
-  if (targetPin) targetPin.style.left = `${targetPct}%`;
+  setText("hero-status-copy", describeRisk(riskData.level));
+  setText("hero-lowest-balance", fmt(riskData.lowestWindowBal));
+  setText("hero-lowest-date", riskData.lowestTx?.date ? fmtShort(riskData.lowestTx.date) : "—");
 }
 
 function renderDoorDash(settings) {
@@ -384,16 +432,14 @@ function renderDoorDash(settings) {
   setText("dd-week-tag", weekLabel);
   setText("dd-earned", fmt(earned));
   setText("dd-goal", fmt(goal));
-  setText("dd-pct", `${pct}%`);
+  setText("dd-pct", `${pct}% complete`);
 
   const remEl = $("dd-remaining");
   if (remEl) {
     if (pct >= 100) {
-      remEl.textContent = "Goal reached 🎉";
-      remEl.style.color = "var(--jade)";
+      remEl.textContent = "Goal reached";
     } else {
-      remEl.textContent = `${fmt(remaining)} to go`;
-      remEl.style.color = "";
+      remEl.textContent = `${fmt(remaining)} remaining`;
     }
   }
 
@@ -406,22 +452,46 @@ function renderDoorDash(settings) {
   });
 }
 
-function renderRunwayChart(chartPoints) {
+function renderRunwayChart(chartPoints, settings, riskData) {
   const container = $("runway-chart");
   if (!container) return;
 
   const first = chartPoints[0];
   const last = chartPoints[chartPoints.length - 1];
 
-  setText(
-    "chart-range-tag",
-    first && last ? `${fmtShort(first.date)} – ${fmtShort(last.date)}` : "—"
-  );
-
-  renderChart(container, chartPoints, window.__moneyMap.settings);
+  setText("chart-range-tag", first && last ? `${fmtShort(first.date)} – ${fmtShort(last.date)}` : "—");
+  renderChart(container, chartPoints, settings, riskData);
 }
 
-function renderTransactions(windowTxs) {
+function renderRunwaySummary(settings, riskData) {
+  const el = $("runway-summary");
+  if (!el) return;
+
+  if (!riskData.lowestTx) {
+    el.textContent = "No transactions in the current forecast window.";
+    return;
+  }
+
+  const lowDate = fmtShort(riskData.lowestTx.date);
+  const lowBal = fmtExact(riskData.lowestTx.balance);
+  const eventName = riskData.lowestTx.event || "scheduled activity";
+
+  let summary = `Lowest balance hits ${lowDate} at ${lowBal}`;
+
+  if (eventName) {
+    summary += ` after ${eventName}`;
+  }
+
+  if (riskData.bufferNeeded > 0) {
+    summary += `. You are ${fmtExact(riskData.bufferNeeded)} below your target buffer.`;
+  } else {
+    summary += `. Balance stays above your target buffer.`;
+  }
+
+  el.textContent = summary;
+}
+
+function renderTransactions(windowTxs, settings) {
   const nonZero = windowTxs.filter((tx) => tx.amountSigned !== 0);
   setText("tx-count-tag", `${nonZero.length} items`);
 
@@ -444,40 +514,74 @@ function renderTransactions(windowTxs) {
     netEl.className = `tot-v ${net >= 0 ? "tot-v--pos" : "tot-v--neg"}`;
   }
 
-  const list = $("tx-list");
-  if (!list) return;
-  list.innerHTML = "";
+  const groupsEl = $("tx-groups");
+  if (!groupsEl) return;
+  groupsEl.innerHTML = "";
 
-  if (!windowTxs.length) {
-    const li = document.createElement("li");
-    li.style.cssText =
-      "padding:20px;text-align:center;font-family:var(--mono);font-size:.68rem;color:var(--ink-3);";
-    li.textContent = "No transactions in the next 30 days.";
-    list.appendChild(li);
+  if (!nonZero.length) {
+    groupsEl.innerHTML = `<div class="tx-empty">No transactions in the next 30 days.</div>`;
     return;
   }
 
-  const sorted = [...windowTxs].sort((a, b) => a.date - b.date);
+  const sorted = [...nonZero].sort((a, b) => a.date - b.date);
+
+  const now = settings.balanceAsOf || new Date();
+  const thisWeekEnd = endOfWeek(now);
+  const nextWeekStart = new Date(thisWeekEnd);
+  nextWeekStart.setDate(nextWeekStart.getDate() + 1);
+  const nextWeekEnd = endOfWeek(nextWeekStart);
+
+  const groups = {
+    "This Week": [],
+    "Next Week": [],
+    "Later": [],
+  };
 
   sorted.forEach((tx) => {
-    const isIncome = tx.amountSigned > 0;
-    const isZero = tx.amountSigned === 0;
-    const pipCls = isZero ? "zero" : isIncome ? "income" : "expense";
-    const amtCls = isZero ? "zero" : isIncome ? "income" : "expense";
-    const amtStr = isZero ? "—" : `${isIncome ? "+" : "−"}${fmt(Math.abs(tx.amountSigned))}`;
+    if (tx.date <= thisWeekEnd) {
+      groups["This Week"].push(tx);
+    } else if (tx.date >= nextWeekStart && tx.date <= nextWeekEnd) {
+      groups["Next Week"].push(tx);
+    } else {
+      groups["Later"].push(tx);
+    }
+  });
 
-    const li = document.createElement("li");
-    li.className = "tx-row";
-    li.innerHTML = `
-      <div class="tx-main">
-        <div class="tx-name">${esc(tx.event || "Untitled Event")}</div>
-        <div class="tx-meta">${esc(fmtShort(tx.date))} · ${esc(tx.category || tx.type || "—")}</div>
-      </div>
-      <div class="tx-type"><span class="tx-pip tx-pip--${pipCls}"></span></div>
-      <div class="tx-amt tx-amt--${amtCls}">${esc(amtStr)}</div>
-      <div class="tx-bal ${tx.riskFlag ? "tx-bal--warn" : ""}">${esc(fmt(tx.balance))}</div>
-    `;
-    list.appendChild(li);
+  Object.entries(groups).forEach(([label, items]) => {
+    if (!items.length) return;
+
+    const section = document.createElement("section");
+    section.className = "week-group";
+
+    const title = document.createElement("div");
+    title.className = "week-group-title";
+    title.textContent = label;
+    section.appendChild(title);
+
+    const list = document.createElement("ul");
+    list.className = "week-list";
+
+    items.forEach((tx) => {
+      const isIncome = tx.amountSigned > 0;
+      const amtClass = isIncome ? "week-amt--income" : "week-amt--expense";
+      const amtStr = `${isIncome ? "+" : "−"}${fmt(Math.abs(tx.amountSigned))}`;
+
+      const li = document.createElement("li");
+      li.className = "week-item";
+      li.innerHTML = `
+        <div class="week-date">${esc(fmtShort(tx.date))}</div>
+        <div class="week-main">
+          <div class="week-name">${esc(tx.event || "Untitled Event")}</div>
+          <div class="week-meta">${esc(tx.category || tx.type || "—")}</div>
+        </div>
+        <div class="week-amt ${amtClass}">${esc(amtStr)}</div>
+        <div class="week-bal ${tx.riskFlag ? "week-bal--warn" : ""}">${esc(fmt(tx.balance))}</div>
+      `;
+      list.appendChild(li);
+    });
+
+    section.appendChild(list);
+    groupsEl.appendChild(section);
   });
 }
 
@@ -490,20 +594,20 @@ function renderError(err) {
   setText("last-updated", "Load failed");
   setText("hero-asof", "Unable to load data");
   setText("hero-balance", "—");
+  setText("hero-status-copy", "—");
+  setText("hero-lowest-balance", "—");
+  setText("hero-lowest-date", "—");
+  setText("runway-summary", "Unable to load data. Check your Apps Script deployment or CSV files.");
 
   const badge = $("risk-level");
   if (badge) {
     badge.textContent = "ERROR";
-    badge.dataset.level = "—";
+    badge.dataset.level = "ERROR";
   }
 
-  const txList = $("tx-list");
-  if (txList) {
-    txList.innerHTML = `
-      <li style="padding:16px;color:var(--rose);font-family:var(--mono);font-size:.66rem;">
-        Unable to load data. Check your Apps Script deployment or CSV files.
-      </li>
-    `;
+  const groups = $("tx-groups");
+  if (groups) {
+    groups.innerHTML = `<div class="tx-empty">Unable to load transactions.</div>`;
   }
 }
 
@@ -535,7 +639,6 @@ async function loadFromAppsScript() {
       throw new Error("Apps Script response missing settings or transactions");
     }
 
-    console.log(`[MoneyMap] Loaded from Google Sheets (${json.fetchedAt})`);
     return {
       settingsRows: json.settings,
       txRows: json.transactions,
@@ -559,7 +662,6 @@ async function loadFromCSV() {
     }),
   ]);
 
-  console.log("[MoneyMap] Loaded from local CSV files");
   return {
     settingsRows: CSV.parse(sRaw),
     txRows: CSV.parse(tRaw),
@@ -598,8 +700,6 @@ async function init() {
     const data = await loadData();
     const { settings, windowTxs, riskData, chartPts, source } = data;
 
-    window.__moneyMap = data;
-
     const now = new Date();
     const sourceLabel = source === "google-sheets" ? "Google Sheets" : "Local CSV";
     setText(
@@ -608,11 +708,10 @@ async function init() {
     );
 
     renderHero(settings, riskData);
-    renderRunwayChart(chartPts);
-    renderTransactions(windowTxs);
+    renderRunwayChart(chartPts, settings, riskData);
+    renderRunwaySummary(settings, riskData);
+    renderTransactions(windowTxs, settings);
     renderDoorDash(settings);
-
-    console.log("[MoneyMap] Loaded ✓", data);
   } catch (err) {
     renderError(err);
   }
