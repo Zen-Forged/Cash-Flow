@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Money Map</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Martian+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="canvas">
+    <div class="atmos" aria-hidden="true">
+      <div class="atmos-a"></div>
+      <div class="atmos-b"></div>
+      <div class="atmos-grid"></div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-star" width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <polygon points="10,1.5 12.4,7.4 19,7.8 14.2,12.1 15.9,18.8 10,15.1 4.1,18.8 5.8,12.1 1,7.8 7.6,7.4"/>
+        </svg>
+        <div class="brand-name">Money Map</div>
+      </div>
+
+      <div class="topbar-r">
+        <div class="beacon" aria-hidden="true">
+          <span class="beacon-core"></span>
+          <span class="beacon-ring"></span>
+        </div>
+        <div class="ts" id="last-updated">Loading…</div>
+      </div>
+    </header>
+
+    <main class="feed">
+
+      <!-- CURRENT BALANCE / STATUS -->
+      <section class="hero" id="hero">
+        <div class="hero-accent"></div>
+
+        <div class="hero-body">
+          <div class="hero-top-row">
+            <div class="hero-label-group">
+              <div class="hero-sup">Current Balance</div>
+              <div class="hero-asof" id="hero-asof">—</div>
+            </div>
+
+            <div class="risk-badge" id="risk-level" data-level="LOW">—</div>
+          </div>
+
+          <div class="hero-figure">
+            <div class="hero-curr"></div>
+            <div class="hero-num" id="hero-balance">—</div>
+          </div>
+
+          <div class="hero-track-wrap">
+            <div class="hero-track" aria-hidden="true">
+              <div class="hero-track-bar" id="hero-bar">
+                <span class="hero-track-tip"></span>
+              </div>
+              <span class="hero-track-pin hero-track-pin--safe" id="hero-pin-safe"></span>
+              <span class="hero-track-pin hero-track-pin--target" id="hero-pin-target"></span>
+            </div>
+            <div class="hero-track-legend">
+              <span>30-day outlook</span>
+              <span id="hero-track-label">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RUNWAY -->
+      <section class="card card--chart">
+        <div class="card-head">
+          <div class="card-head-l">
+            <div class="card-sup">How does this look over 30 days?</div>
+            <div class="card-title">Runway</div>
+          </div>
+          <div class="chip" id="chart-range-tag">—</div>
+        </div>
+
+        <div class="chart-stage">
+          <div id="runway-chart" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- UPCOMING TRANSACTIONS -->
+      <section class="card card--tx">
+        <div class="card-head">
+          <div class="card-head-l">
+            <div class="card-sup">What’s coming out next?</div>
+            <div class="card-title">Upcoming Events</div>
+          </div>
+          <div class="chip" id="tx-count-tag">—</div>
+        </div>
+
+        <div class="totals-band">
+          <div class="tot">
+            <div class="tot-k">Outflow</div>
+            <div class="tot-v tot-v--out" id="tx-total-out">—</div>
+          </div>
+          <div class="tot-line"></div>
+          <div class="tot">
+            <div class="tot-k">Inflow</div>
+            <div class="tot-v tot-v--in" id="tx-total-in">—</div>
+          </div>
+          <div class="tot-line"></div>
+          <div class="tot">
+            <div class="tot-k">Net</div>
+            <div class="tot-v" id="tx-net">—</div>
+          </div>
+        </div>
+
+        <div class="tx-head">
+          <div>Event</div>
+          <div></div>
+          <div class="tx-h-r">Amount</div>
+          <div class="tx-h-r">Balance</div>
+        </div>
+
+        <ul class="tx-list" id="tx-list">
+          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
+          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
+          <li class="tx-skel"><b></b><b></b><b></b><b></b></li>
+        </ul>
+      </section>
+
+      <!-- WEEKLY GOAL -->
+      <section class="card card--dd">
+        <div class="card-head">
+          <div class="card-head-l">
+            <div class="card-sup">Weekly Goal</div>
+            <div class="card-title">Gig Income</div>
+          </div>
+          <div class="chip chip--ember" id="dd-week-tag">—</div>
+        </div>
+
+        <div class="card-body">
+          <div class="dd-row">
+            <div>
+              <div class="fig-sup">Earned</div>
+              <div class="fig-lg" id="dd-earned">—</div>
+            </div>
+
+            <div class="dd-goal">
+              <div class="fig-sup">Goal</div>
+              <div class="fig-sm" id="dd-goal">—</div>
+            </div>
+          </div>
+
+          <div class="bar-wrap">
+            <div
+              class="bar-track"
+              id="dd-progressbar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              aria-label="DoorDash weekly progress"
+            >
+              <div class="bar-fill" id="dd-fill">
+                <div class="bar-sheen"></div>
+              </div>
+            </div>
+
+            <div class="bar-foot">
+              <span class="bar-pct" id="dd-pct">—</span>
+              <span class="bar-rem" id="dd-remaining">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="footer-note">Read only · synced from sheet</div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
