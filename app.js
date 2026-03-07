@@ -59,9 +59,15 @@ const Cast = (() => {
   function date(str) {
     if (!str) return null;
     const clean = String(str).replace(/^\$/, "").trim();
-    const [m, d, y] = clean.split("/").map(Number);
-    if (!m || !d || !y) return null;
-    return new Date(y, m - 1, d);
+
+    if (clean.includes("/")) {
+      const [m, d, y] = clean.split("/").map(Number);
+      if (!m || !d || !y) return null;
+      return new Date(y, m - 1, d);
+    }
+
+    const parsed = new Date(clean);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   function num(str) {
@@ -94,8 +100,11 @@ function loadSettings(rows) {
 
   const balanceAsOf = gd("Balance As Of Date");
   const windowStart = balanceAsOf ? new Date(balanceAsOf) : new Date();
+  windowStart.setHours(0, 0, 0, 0);
+
   const windowEnd = new Date(windowStart);
   windowEnd.setDate(windowEnd.getDate() + 30);
+  windowEnd.setHours(23, 59, 59, 999);
 
   return {
     checkingBalance: gn("Checking Balance"),
@@ -120,7 +129,8 @@ function loadSettings(rows) {
 ══════════════════════════════════════════════════════════════ */
 function loadTransactions(rows) {
   return rows
-    .map((r) => ({
+    .map((r, idx) => ({
+      id: idx + 1,
       date: Cast.date(r["Date"]),
       event: (r["Event"] || "").trim(),
       type: (r["Type"] || "").trim(),
@@ -136,7 +146,12 @@ function loadTransactions(rows) {
       inWindow: Cast.bool(r["Window (Next X Days)"]),
       daysUntil: Cast.num(r["Days Until"]),
     }))
-    .filter((tx) => tx.date !== null);
+    .filter((tx) => tx.date !== null)
+    .sort((a, b) => {
+      const diff = a.date - b.date;
+      if (diff !== 0) return diff;
+      return a.id - b.id;
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -144,9 +159,7 @@ function loadTransactions(rows) {
 ══════════════════════════════════════════════════════════════ */
 function inRange(date, start, end) {
   const d = date.getTime();
-  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
-  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
-  return d >= s && d <= e;
+  return d >= start.getTime() && d <= end.getTime();
 }
 
 function getWindowTxs(txs, settings) {
@@ -157,7 +170,70 @@ function getWindowTxs(txs, settings) {
   });
 }
 
-function deriveRisk(txs, windowTxs, settings) {
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function buildDailySeries(windowTxs, settings) {
+  const byDay = new Map();
+
+  windowTxs.forEach((tx) => {
+    const key = toDateKey(tx.date);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(tx);
+  });
+
+  const points = [];
+  let carryBalance = settings.checkingBalance;
+
+  for (let i = 0; i <= 30; i++) {
+    const date = new Date(settings.windowStart);
+    date.setDate(date.getDate() + i);
+    date.setHours(0, 0, 0, 0);
+
+    const key = toDateKey(date);
+    const txs = (byDay.get(key) || []).slice().sort((a, b) => a.id - b.id);
+
+    let dayStartBalance = carryBalance;
+    let intradayLowBalance = dayStartBalance;
+    let lowestTx = null;
+
+    if (txs.length) {
+      intradayLowBalance = txs[0].balance;
+      lowestTx = txs[0];
+
+      txs.forEach((tx) => {
+        if (tx.balance < intradayLowBalance) {
+          intradayLowBalance = tx.balance;
+          lowestTx = tx;
+        }
+      });
+
+      carryBalance = txs[txs.length - 1].balance;
+    }
+
+    const dayEndBalance = carryBalance;
+    const sameDayRecovery = dayEndBalance > intradayLowBalance;
+
+    points.push({
+      date,
+      dateKey: key,
+      txs,
+      dayStartBalance,
+      intradayLowBalance,
+      dayEndBalance,
+      lowestTx,
+      sameDayRecovery,
+    });
+  }
+
+  return points;
+}
+
+function deriveRisk(windowTxs, dailySeries, settings) {
   const levelOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, MODERATE: 2, WATCH: 1, LOW: 0 };
   let worstLevel = "LOW";
 
@@ -167,41 +243,30 @@ function deriveRisk(txs, windowTxs, settings) {
     }
   });
 
-  let lowestTx = null;
-  windowTxs.forEach((tx) => {
-    if (!lowestTx || tx.balance < lowestTx.balance) lowestTx = tx;
+  let lowestDay = null;
+  dailySeries.forEach((day) => {
+    if (!lowestDay || day.dayEndBalance < lowestDay.dayEndBalance) {
+      lowestDay = day;
+    }
   });
 
-  const lowestWindowBal = lowestTx ? lowestTx.balance : settings.checkingBalance;
+  let compressionDay = null;
+  dailySeries.forEach((day) => {
+    if (!compressionDay || day.intradayLowBalance < compressionDay.intradayLowBalance) {
+      compressionDay = day;
+    }
+  });
+
+  const lowestWindowBal = lowestDay ? lowestDay.dayEndBalance : settings.checkingBalance;
   const bufferNeeded = Math.max(0, settings.targetMinBalance - lowestWindowBal);
 
   return {
     level: worstLevel || "LOW",
-    lowestTx,
+    lowestDay,
+    compressionDay,
     lowestWindowBal,
     bufferNeeded,
   };
-}
-
-function buildChartPoints(txs, settings) {
-  const sorted = [...txs].sort((a, b) => a.date - b.date);
-  const points = [];
-
-  for (let d = 0; d <= 30; d++) {
-    const dt = new Date(settings.windowStart);
-    dt.setDate(dt.getDate() + d);
-
-    const lastTx = sorted.filter((tx) => tx.date <= dt).pop();
-    const bal = lastTx ? lastTx.balance : settings.checkingBalance;
-
-    points.push({
-      date: dt,
-      label: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      balance: parseFloat(bal.toFixed(2)),
-    });
-  }
-
-  return points;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -279,8 +344,8 @@ function setText(id, value) {
 /* ══════════════════════════════════════════════════════════════
    8. SVG CHART
 ══════════════════════════════════════════════════════════════ */
-function renderChart(container, chartPoints, settings, riskData) {
-  if (!container || chartPoints.length < 2) return;
+function renderChart(container, dailySeries, settings, riskData) {
+  if (!container || dailySeries.length < 2) return;
 
   const W = 600;
   const H = 220;
@@ -291,9 +356,24 @@ function renderChart(container, chartPoints, settings, riskData) {
   const CW = W - PL - PR;
   const CH = H - PT - PB;
 
-  const bals = chartPoints.map((p) => p.balance);
-  const maxVal = Math.max(...bals, settings.checkingBalance, settings.targetMinBalance, settings.safeMinBalance);
-  const minVal = Math.min(...bals, settings.checkingBalance, settings.safeMinBalance, 0);
+  const endBalances = dailySeries.map((p) => p.dayEndBalance);
+  const compressionBalances = dailySeries.map((p) => p.intradayLowBalance);
+
+  const maxVal = Math.max(
+    ...endBalances,
+    ...compressionBalances,
+    settings.checkingBalance,
+    settings.targetMinBalance,
+    settings.safeMinBalance
+  );
+
+  const minVal = Math.min(
+    ...endBalances,
+    ...compressionBalances,
+    settings.checkingBalance,
+    settings.safeMinBalance,
+    0
+  );
 
   const topPad = Math.max(300, maxVal * 0.12);
   const bottomPad = Math.max(250, Math.abs(minVal) * 0.15);
@@ -302,10 +382,16 @@ function renderChart(container, chartPoints, settings, riskData) {
   const yMin = Math.min(minVal - bottomPad, -100);
   const ySpan = yMax - yMin || 1;
 
-  const xOf = (i) => PL + (i / (chartPoints.length - 1)) * CW;
+  const xOf = (i) => PL + (i / (dailySeries.length - 1)) * CW;
   const yOf = (v) => PT + CH - ((v - yMin) / ySpan) * CH;
 
-  const coords = chartPoints.map((p, i) => ({ x: xOf(i), y: yOf(p.balance), balance: p.balance, date: p.date }));
+  const coords = dailySeries.map((p, i) => ({
+    x: xOf(i),
+    y: yOf(p.dayEndBalance),
+    date: p.date,
+    endBalance: p.dayEndBalance,
+    intradayLowBalance: p.intradayLowBalance,
+  }));
 
   function bezierPath(pts) {
     if (!pts.length) return "";
@@ -327,34 +413,37 @@ function renderChart(container, chartPoints, settings, riskData) {
   const cautionLineY = yOf(Math.max(settings.safeMinBalance || 0, 0));
   const zeroLineY = yOf(0);
 
-  const first = chartPoints[0];
-  const mid = chartPoints[Math.floor(chartPoints.length / 2)];
-  const last = chartPoints[chartPoints.length - 1];
+  const first = dailySeries[0];
+  const mid = dailySeries[Math.floor(dailySeries.length / 2)];
+  const last = dailySeries[dailySeries.length - 1];
 
-  const lowestTx = riskData.lowestTx;
-  let lowMarker = "";
-  if (lowestTx) {
-    let nearestIndex = 0;
-    let minDiff = Infinity;
-    chartPoints.forEach((p, i) => {
-      const diff = Math.abs(p.date.getTime() - lowestTx.date.getTime());
-      if (diff < minDiff) {
-        minDiff = diff;
-        nearestIndex = i;
-      }
-    });
+  let compressionMarker = "";
+  if (riskData.compressionDay) {
+    let idx = dailySeries.findIndex((d) => d.dateKey === riskData.compressionDay.dateKey);
+    if (idx < 0) idx = 0;
 
-    const lowPoint = coords[nearestIndex];
-    lowMarker = `
+    const day = dailySeries[idx];
+    const x = xOf(idx);
+    const lowY = yOf(day.intradayLowBalance);
+    const endY = yOf(day.dayEndBalance);
+    const recoveredSameDay = day.sameDayRecovery;
+
+    compressionMarker = `
       <g>
-        <path d="M ${lowPoint.x.toFixed(1)} ${(lowPoint.y - 30).toFixed(1)} 
-                 L ${(lowPoint.x - 18).toFixed(1)} ${(lowPoint.y + 4).toFixed(1)} 
-                 A 4 4 0 0 0 ${(lowPoint.x - 14).toFixed(1)} ${(lowPoint.y + 10).toFixed(1)}
-                 L ${(lowPoint.x + 14).toFixed(1)} ${(lowPoint.y + 10).toFixed(1)}
-                 A 4 4 0 0 0 ${(lowPoint.x + 18).toFixed(1)} ${(lowPoint.y + 4).toFixed(1)} Z"
+        ${
+          recoveredSameDay
+            ? `<line x1="${x.toFixed(1)}" y1="${lowY.toFixed(1)}" x2="${x.toFixed(1)}" y2="${endY.toFixed(1)}"
+                 stroke="var(--rose)" stroke-width="2" stroke-dasharray="4 4" opacity="0.7"></line>`
+            : ""
+        }
+        <path d="M ${x.toFixed(1)} ${(lowY - 30).toFixed(1)}
+                 L ${(x - 18).toFixed(1)} ${(lowY + 4).toFixed(1)}
+                 A 4 4 0 0 0 ${(x - 14).toFixed(1)} ${(lowY + 10).toFixed(1)}
+                 L ${(x + 14).toFixed(1)} ${(lowY + 10).toFixed(1)}
+                 A 4 4 0 0 0 ${(x + 18).toFixed(1)} ${(lowY + 4).toFixed(1)} Z"
               fill="var(--rose)"/>
-        <rect x="${(lowPoint.x - 2).toFixed(1)}" y="${(lowPoint.y - 12).toFixed(1)}" width="4" height="14" rx="2" fill="#fff"/>
-        <circle cx="${lowPoint.x.toFixed(1)}" cy="${(lowPoint.y + 6).toFixed(1)}" r="2.3" fill="#fff"/>
+        <rect x="${(x - 2).toFixed(1)}" y="${(lowY - 12).toFixed(1)}" width="4" height="14" rx="2" fill="#fff"/>
+        <circle cx="${x.toFixed(1)}" cy="${(lowY + 6).toFixed(1)}" r="2.3" fill="#fff"/>
       </g>
     `;
   }
@@ -363,7 +452,7 @@ function renderChart(container, chartPoints, settings, riskData) {
     <svg class="runway-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="30-day runway chart">
       <defs>
         <linearGradient id="mm-area-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="rgba(37,99,235,0.28)"/>
+          <stop offset="0%" stop-color="rgba(37,99,235,0.22)"/>
           <stop offset="100%" stop-color="rgba(37,99,235,0.04)"/>
         </linearGradient>
       </defs>
@@ -381,9 +470,9 @@ function renderChart(container, chartPoints, settings, riskData) {
       <path d="${area}" fill="url(#mm-area-fill)"></path>
       <path d="${line}" fill="none" stroke="var(--sky)" stroke-width="4" stroke-linecap="round"></path>
 
-      ${coords.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5.2" fill="var(--sky)"/>`).join("")}
+      ${coords.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4.5" fill="var(--sky)"/>`).join("")}
 
-      ${lowMarker}
+      ${compressionMarker}
 
       <text x="${PL - 6}" y="${(yOf(3000) + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$3000</text>
       <text x="${PL - 6}" y="${(yOf(2000) + 4).toFixed(1)}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink-2)">$2000</text>
@@ -417,7 +506,7 @@ function renderHero(settings, riskData) {
 
   setText("hero-status-copy", describeRisk(riskData.level));
   setText("hero-lowest-balance", fmt(riskData.lowestWindowBal));
-  setText("hero-lowest-date", riskData.lowestTx?.date ? fmtShort(riskData.lowestTx.date) : "—");
+  setText("hero-lowest-date", riskData.lowestDay?.date ? fmtShort(riskData.lowestDay.date) : "—");
 }
 
 function renderDoorDash(settings) {
@@ -436,11 +525,7 @@ function renderDoorDash(settings) {
 
   const remEl = $("dd-remaining");
   if (remEl) {
-    if (pct >= 100) {
-      remEl.textContent = "Goal reached";
-    } else {
-      remEl.textContent = `${fmt(remaining)} remaining`;
-    }
+    remEl.textContent = pct >= 100 ? "Goal reached" : `${fmt(remaining)} remaining`;
   }
 
   requestAnimationFrame(() => {
@@ -452,43 +537,45 @@ function renderDoorDash(settings) {
   });
 }
 
-function renderRunwayChart(chartPoints, settings, riskData) {
+function renderRunwayChart(dailySeries, settings, riskData) {
   const container = $("runway-chart");
   if (!container) return;
 
-  const first = chartPoints[0];
-  const last = chartPoints[chartPoints.length - 1];
+  const first = dailySeries[0];
+  const last = dailySeries[dailySeries.length - 1];
 
   setText("chart-range-tag", first && last ? `${fmtShort(first.date)} – ${fmtShort(last.date)}` : "—");
-  renderChart(container, chartPoints, settings, riskData);
+  renderChart(container, dailySeries, settings, riskData);
 }
 
-function renderRunwaySummary(settings, riskData) {
+function renderRunwaySummary(riskData) {
   const el = $("runway-summary");
   if (!el) return;
 
-  if (!riskData.lowestTx) {
+  const compression = riskData.compressionDay;
+  const lowestDay = riskData.lowestDay;
+
+  if (!compression || !lowestDay) {
     el.textContent = "No transactions in the current forecast window.";
     return;
   }
 
-  const lowDate = fmtShort(riskData.lowestTx.date);
-  const lowBal = fmtExact(riskData.lowestTx.balance);
-  const eventName = riskData.lowestTx.event || "scheduled activity";
+  const compressionDate = fmtShort(compression.date);
+  const compressionBal = fmtExact(compression.intradayLowBalance);
+  const compressionEvent = compression.lowestTx?.event || "scheduled activity";
 
-  let summary = `Lowest balance hits ${lowDate} at ${lowBal}`;
-
-  if (eventName) {
-    summary += ` after ${eventName}`;
+  if (compression.sameDayRecovery) {
+    el.textContent =
+      `${compressionDate} is the tightest cash day. Balance compresses to ${compressionBal} after ${compressionEvent}, then recovers the same day to ${fmtExact(compression.dayEndBalance)}.`;
+    return;
   }
 
-  if (riskData.bufferNeeded > 0) {
-    summary += `. You are ${fmtExact(riskData.bufferNeeded)} below your target buffer.`;
-  } else {
-    summary += `. Balance stays above your target buffer.`;
-  }
+  const lowDate = fmtShort(lowestDay.date);
+  const lowBal = fmtExact(lowestDay.dayEndBalance);
+  const eventName = lowestDay.lowestTx?.event || "scheduled activity";
 
-  el.textContent = summary;
+  el.textContent =
+    `Lowest balance hits ${lowDate} at ${lowBal} after ${eventName}. This remains the lowest day-end balance in the current window.`;
 }
 
 function renderTransactions(windowTxs, settings) {
@@ -523,7 +610,7 @@ function renderTransactions(windowTxs, settings) {
     return;
   }
 
-  const sorted = [...nonZero].sort((a, b) => a.date - b.date);
+  const sorted = [...nonZero].sort((a, b) => a.date - b.date || a.id - b.id);
 
   const now = settings.balanceAsOf || new Date();
   const thisWeekEnd = endOfWeek(now);
@@ -686,10 +773,17 @@ async function loadData() {
   const settings = loadSettings(raw.settingsRows);
   const allTxs = loadTransactions(raw.txRows);
   const windowTxs = getWindowTxs(allTxs, settings);
-  const riskData = deriveRisk(allTxs, windowTxs, settings);
-  const chartPts = buildChartPoints(allTxs, settings);
+  const dailySeries = buildDailySeries(windowTxs, settings);
+  const riskData = deriveRisk(windowTxs, dailySeries, settings);
 
-  return { settings, allTxs, windowTxs, riskData, chartPts, source: raw.source };
+  return {
+    settings,
+    allTxs,
+    windowTxs,
+    dailySeries,
+    riskData,
+    source: raw.source,
+  };
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -698,7 +792,7 @@ async function loadData() {
 async function init() {
   try {
     const data = await loadData();
-    const { settings, windowTxs, riskData, chartPts, source } = data;
+    const { settings, windowTxs, dailySeries, riskData, source } = data;
 
     const now = new Date();
     const sourceLabel = source === "google-sheets" ? "Google Sheets" : "Local CSV";
@@ -708,8 +802,8 @@ async function init() {
     );
 
     renderHero(settings, riskData);
-    renderRunwayChart(chartPts, settings, riskData);
-    renderRunwaySummary(settings, riskData);
+    renderRunwayChart(dailySeries, settings, riskData);
+    renderRunwaySummary(riskData);
     renderTransactions(windowTxs, settings);
     renderDoorDash(settings);
   } catch (err) {
