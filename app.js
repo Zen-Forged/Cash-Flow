@@ -627,7 +627,7 @@ function renderError(err) {
 ══════════════════════════════════════════════════════════════ */
 
 // ─── STEP 6: Paste your deployed Web App URL here ────────────
-const APPS_SCRIPT_URL = "";   // <- PASTE YOUR /exec URL HERE
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxsHG1DHdA_0Re5jRr4M5Z494nuJD_Rz4J3Gh4kBLgMmzk1zmX343bef7dypKr0Pjc5/exec";   // <- PASTE YOUR /exec URL HERE
 // ─────────────────────────────────────────────────────────────
 
 const SETTINGS_CSV_URL     = "CashFlow_Template_-_Settings.csv";
