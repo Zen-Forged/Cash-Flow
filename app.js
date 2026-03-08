@@ -363,7 +363,7 @@ const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; }
 /* ── §1  Hero — balance + integrated weather status ── */
 function renderHero(settings, riskData) {
   const { checkingBalance, balanceAsOf } = settings;
-  const { level, riskRow, lowestWindowBal, lowestWindowDate } = riskData;
+  const { level, lowestWindowBal, lowestWindowDate } = riskData;
 
   // Balance
   setText("hero-balance", fmtWhole(checkingBalance));
@@ -406,9 +406,9 @@ function renderHero(settings, riskData) {
   }
 
   // Hero footer — Projected Low cell
-  // Prefer sheet-authoritative values; fall back to JS-computed approximation
-  const projLow  = settings.lowestDayEndBalance  ?? (riskRow ? riskRow.balance : lowestWindowBal);
-  const projDate = settings.lowestDayEndDate      || (riskRow ? riskRow.date    : lowestWindowDate);
+  // Prefer sheet-authoritative values; fall back to JS-computed 45-day minimum
+  const projLow  = settings.lowestDayEndBalance  ?? lowestWindowBal;
+  const projDate = settings.lowestDayEndDate      || lowestWindowDate;
   const projEl   = $("risk-balance");
   if (projEl) {
     projEl.textContent = projLow != null ? fmt(projLow) : "\u2014";
