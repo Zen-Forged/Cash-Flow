@@ -293,6 +293,55 @@ body {
 .hfc-value.alert   { color: var(--clay); }
 
 /* ══════════════════════════════════════════════════════════════
+   §1.5  AI INSIGHT CARD
+══════════════════════════════════════════════════════════════ */
+.insight-body {
+  padding: 15px 18px 0;
+}
+.insight-text {
+  font-family: var(--body);
+  font-size: .84rem;
+  line-height: 1.68;
+  color: var(--ink-2);
+}
+
+/* Compression details strip */
+.compression-strip {
+  margin-top: 14px;
+  border: 1px solid var(--bd-2);
+  border-radius: var(--r-sm);
+  background: var(--sf-mist);
+  overflow: hidden;
+}
+.cs-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 7px 13px;
+  border-bottom: 1px solid var(--bd-3);
+}
+.cs-row:last-child { border-bottom: none; }
+.cs-label {
+  font-family: var(--num); font-size: .5rem;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--ink-4);
+}
+.cs-value {
+  font-family: var(--num); font-size: .72rem; font-weight: 500; color: var(--ink-2);
+}
+
+/* Updated-at footer */
+.insight-foot {
+  padding: 10px 18px 12px;
+  margin-top: 13px;
+  border-top: 1px solid var(--bd-3);
+  min-height: 36px;
+}
+.insight-ts {
+  font-family: var(--num); font-size: .5rem;
+  color: var(--ink-5); text-transform: uppercase; letter-spacing: .08em;
+}
+
+/* ══════════════════════════════════════════════════════════════
    §2  CONTRIBUTION CARD
 ══════════════════════════════════════════════════════════════ */
 .contrib-card .card-title { color: var(--gold); }

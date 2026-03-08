@@ -115,6 +115,18 @@ function loadSettings(rows) {
     doorDashWeeklyGoal:  gn("Door Dash Weekly Goal"),
     doorDashEarned:      gn("DoorDash Earned"),
     dasherAppAmount:     gn("Dasher App Amount"),
+    // AI insight fields
+    aiInsightHeadline:           g("AI Insight Headline"),
+    aiInsightText:               g("AI Insight Text"),
+    aiInsightUpdatedAt:          g("AI Insight Updated At"),
+    // Compression event (optional — only present when a squeeze is detected)
+    compressionDate:             gd("Compression Date"),
+    compressionLowBalance:       g("Compression Low Balance")  ? gn("Compression Low Balance")  : null,
+    compressionEndBalance:       g("Compression End Balance")  ? gn("Compression End Balance")  : null,
+    compressionRecoveredSameDay: Cast.bool(g("Compression Recovered Same Day")),
+    // Lowest day (sheet-authoritative; preferred over JS-computed fallback)
+    lowestDayEndBalance:         g("Lowest Day End Balance")   ? gn("Lowest Day End Balance")   : null,
+    lowestDayEndDate:            gd("Lowest Day End Date"),
     windowStart,
     windowEnd,
   };
@@ -394,8 +406,9 @@ function renderHero(settings, riskData) {
   }
 
   // Hero footer — Projected Low cell
-  const projLow  = riskRow ? riskRow.balance : lowestWindowBal;
-  const projDate = riskRow ? riskRow.date    : lowestWindowDate;
+  // Prefer sheet-authoritative values; fall back to JS-computed approximation
+  const projLow  = settings.lowestDayEndBalance  ?? (riskRow ? riskRow.balance : lowestWindowBal);
+  const projDate = settings.lowestDayEndDate      || (riskRow ? riskRow.date    : lowestWindowDate);
   const projEl   = $("risk-balance");
   if (projEl) {
     projEl.textContent = projLow != null ? fmt(projLow) : "\u2014";
@@ -405,6 +418,37 @@ function renderHero(settings, riskData) {
   }
   setText("risk-balance-date", fmtShort(projDate));
 }
+
+/* ── §1.5  AI Insight card ── */
+function renderInsight(settings) {
+  const card = $("insight-card");
+  if (!card) return;
+
+  const { aiInsightHeadline, aiInsightText, aiInsightUpdatedAt,
+          compressionDate, compressionLowBalance, compressionEndBalance,
+          compressionRecoveredSameDay } = settings;
+
+  if (!aiInsightHeadline && !aiInsightText) { card.style.display = "none"; return; }
+  card.style.display = "";
+
+  setText("insight-headline",   aiInsightHeadline || "\u2014");
+  setText("insight-text",       aiInsightText     || "\u2014");
+  setText("insight-updated-at", aiInsightUpdatedAt ? "Updated \u00B7 " + aiInsightUpdatedAt : "");
+
+  const strip = $("compression-strip");
+  if (strip) {
+    if (compressionDate) {
+      setText("cs-date",      fmtShort(compressionDate));
+      setText("cs-low",       compressionLowBalance  != null ? fmt(compressionLowBalance)  : "\u2014");
+      setText("cs-end",       compressionEndBalance  != null ? fmt(compressionEndBalance)  : "\u2014");
+      setText("cs-recovered", compressionRecoveredSameDay ? "Yes" : "No");
+      strip.style.display = "";
+    } else {
+      strip.style.display = "none";
+    }
+  }
+}
+
 
 /* Inline SVG icons for weather badge (10×10 viewBox) */
 function weatherIconSVG(type) {
@@ -744,6 +788,7 @@ async function init() {
     );
 
     renderHero(settings, riskData);        // §1
+    renderInsight(settings);              // §1.5
     renderDoorDash(settings);              // §2
     renderFlowGrid(windowTxs, settings);   // §3
     renderRunwayChart(chartPts, settings); // §4
