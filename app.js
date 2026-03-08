@@ -174,11 +174,14 @@ function deriveRisk(txs, windowTxs, settings) {
   });
 
   const riskRow         = txs.find(tx => tx.riskFlag);
-  const windowBalances  = windowTxs.map(tx => tx.balance);
-  const lowestWindowBal = windowBalances.length ? Math.min(...windowBalances) : settings.checkingBalance;
-  const bufferNeeded    = Math.max(0, settings.targetMinBalance - lowestWindowBal);
+  const lowestWindowTx  = windowTxs.length
+    ? windowTxs.reduce((min, tx) => tx.balance < min.balance ? tx : min, windowTxs[0])
+    : null;
+  const lowestWindowBal  = lowestWindowTx ? lowestWindowTx.balance : settings.checkingBalance;
+  const lowestWindowDate = lowestWindowTx ? lowestWindowTx.date : null;
+  const bufferNeeded     = Math.max(0, settings.targetMinBalance - lowestWindowBal);
 
-  return { level: worstLevel || "LOW", riskRow: riskRow ?? null, lowestWindowBal, bufferNeeded };
+  return { level: worstLevel || "LOW", riskRow: riskRow ?? null, lowestWindowBal, lowestWindowDate, bufferNeeded };
 }
 
 function buildChartPoints(txs, settings) {
@@ -348,7 +351,7 @@ const setText = (id, val) => { const el = $(id); if (el) el.textContent = val; }
 /* ── §1  Hero — balance + integrated weather status ── */
 function renderHero(settings, riskData) {
   const { checkingBalance, balanceAsOf } = settings;
-  const { level, riskRow, lowestWindowBal } = riskData;
+  const { level, riskRow, lowestWindowBal, lowestWindowDate } = riskData;
 
   // Balance
   setText("hero-balance", fmtWhole(checkingBalance));
@@ -391,14 +394,16 @@ function renderHero(settings, riskData) {
   }
 
   // Hero footer — Projected Low cell
-  const projLow = riskRow ? riskRow.balance : lowestWindowBal;
-  const projEl  = $("risk-balance");
+  const projLow  = riskRow ? riskRow.balance : lowestWindowBal;
+  const projDate = riskRow ? riskRow.date    : lowestWindowDate;
+  const projEl   = $("risk-balance");
   if (projEl) {
     projEl.textContent = projLow != null ? fmt(projLow) : "\u2014";
     if      (projLow < settings.safeMinBalance)    projEl.className = "hfc-value alert";
     else if (projLow < settings.targetMinBalance)  projEl.className = "hfc-value caution";
     else                                           projEl.className = "hfc-value";
   }
+  setText("risk-balance-date", fmtShort(projDate));
 }
 
 /* Inline SVG icons for weather badge (10×10 viewBox) */
