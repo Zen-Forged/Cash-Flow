@@ -1,178 +1,270 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="theme-color" content="#F6F3EE"/>
   <title>Money Map</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Martian+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;1,8..60,300;1,8..60,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <div class="canvas">
-    <div class="atmos" aria-hidden="true">
-      <div class="atmos-a"></div>
-      <div class="atmos-b"></div>
-      <div class="atmos-grid"></div>
-    </div>
 
-    <header class="topbar">
-      <div class="brand">
-        <svg class="brand-star" width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <polygon points="10,1.5 12.4,7.4 19,7.8 14.2,12.1 15.9,18.8 10,15.1 4.1,18.8 5.8,12.1 1,7.8 7.6,7.4"/>
+  <!-- ─── TOPBAR ─────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M6 1 L7.2 4.2 L10.8 4.5 L8.2 6.8 L9 10.4 L6 8.6 L3 10.4 L3.8 6.8 L1.2 4.5 L4.8 4.2 Z" fill="white" fill-opacity=".88"/>
         </svg>
-        <div class="brand-name">Money Map</div>
+      </div>
+      <span class="brand-name">Money Map</span>
+    </div>
+    <div class="topbar-r">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span class="topbar-ts" id="last-updated">Loading…</span>
+    </div>
+  </header>
+
+  <!-- ─── FEED ────────────────────────────────────────── -->
+  <main class="feed">
+
+    <!-- §1  HERO — balance + weather scene ─────────── -->
+    <section class="hero-card" id="hero" aria-label="Account snapshot">
+
+      <div class="hero-scene">
+
+        <!-- Left: balance + weather status -->
+        <div class="hero-left">
+          <div>
+            <div class="hero-eyebrow">
+              <span class="hero-sup">Checking</span>
+              <span class="hero-date" id="hero-asof">—</span>
+            </div>
+            <div class="hero-balance-row" aria-label="Current balance">
+              <span class="hero-currency" aria-hidden="true">$</span>
+              <span class="hero-amount" id="hero-balance">—</span>
+            </div>
+          </div>
+          <div class="hero-status">
+            <!-- Weather badge — data-level drives color; inner text set by JS -->
+            <span class="hero-weather-badge" data-level="CLEAR" id="risk-level" aria-label="Financial weather">
+              <svg class="hero-wx-icon" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" id="hero-wx-icon">
+                <!-- icon swapped by JS based on level -->
+                <circle cx="5" cy="5" r="2.2" fill="currentColor"/>
+                <g stroke="currentColor" stroke-width="1" stroke-linecap="round">
+                  <line x1="5" y1="0.5" x2="5" y2="1.8"/>
+                  <line x1="5" y1="8.2" x2="5" y2="9.5"/>
+                  <line x1="0.5" y1="5" x2="1.8" y2="5"/>
+                  <line x1="8.2" y1="5" x2="9.5" y2="5"/>
+                  <line x1="1.6" y1="1.6" x2="2.5" y2="2.5"/>
+                  <line x1="7.5" y1="7.5" x2="8.4" y2="8.4"/>
+                  <line x1="8.4" y1="1.6" x2="7.5" y2="2.5"/>
+                  <line x1="2.5" y1="7.5" x2="1.6" y2="8.4"/>
+                </g>
+              </svg>
+              <span id="risk-level-text">Clear</span>
+            </span>
+            <span class="hero-direction" id="hero-direction">Moving forward</span>
+          </div>
+        </div>
+
+        <!-- Right: SVG weather illustration (static; level-tinted by JS) -->
+        <div class="hero-right" aria-hidden="true" id="hero-wx-scene">
+          <svg viewBox="0 0 130 148" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stop-color="#D4E8F0" stop-opacity=".55"/>
+                <stop offset="100%" stop-color="#EEF5E8" stop-opacity=".35"/>
+              </linearGradient>
+              <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%"   stop-color="#F5D87A" stop-opacity=".45"/>
+                <stop offset="60%"  stop-color="#F0C850" stop-opacity=".18"/>
+                <stop offset="100%" stop-color="#F0C850" stop-opacity="0"/>
+              </radialGradient>
+              <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stop-color="#C8D8B8" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#A8C098" stop-opacity=".15"/>
+              </linearGradient>
+            </defs>
+            <rect width="130" height="148" fill="url(#skyGrad)"/>
+            <circle cx="88" cy="38" r="34" fill="url(#sunGlow)"/>
+            <circle cx="88" cy="38" r="16" fill="#F5C842" fill-opacity=".82"/>
+            <circle cx="88" cy="38" r="13" fill="#FAD84A" fill-opacity=".9"/>
+            <g stroke="#F5C842" stroke-width="1.4" stroke-linecap="round" opacity=".55">
+              <line x1="88" y1="16" x2="88" y2="11"/>
+              <line x1="88" y1="60" x2="88" y2="65"/>
+              <line x1="66"  y1="38" x2="61"  y2="38"/>
+              <line x1="110" y1="38" x2="115" y2="38"/>
+              <line x1="72.5" y1="22.5" x2="68.9" y2="18.9"/>
+              <line x1="103.5" y1="53.5" x2="107.1" y2="57.1"/>
+              <line x1="103.5" y1="22.5" x2="107.1" y2="18.9"/>
+              <line x1="72.5"  y1="53.5" x2="68.9"  y2="57.1"/>
+            </g>
+            <g opacity=".78">
+              <ellipse cx="42" cy="72" rx="26" ry="12" fill="white"/>
+              <ellipse cx="28" cy="76" rx="16" ry="10" fill="white"/>
+              <ellipse cx="56" cy="76" rx="14" ry="9"  fill="white"/>
+              <ellipse cx="42" cy="80" rx="24" ry="8"  fill="white"/>
+            </g>
+            <g opacity=".45">
+              <ellipse cx="98" cy="62" rx="18" ry="8" fill="white"/>
+              <ellipse cx="86" cy="65" rx="11" ry="7" fill="white"/>
+              <ellipse cx="108" cy="65" rx="10" ry="6" fill="white"/>
+              <ellipse cx="98" cy="68" rx="16" ry="6" fill="white"/>
+            </g>
+            <path d="M0,118 Q22,102 50,108 Q78,115 100,104 Q118,96 130,100 L130,148 L0,148 Z" fill="url(#groundGrad)"/>
+            <path d="M0,132 Q30,122 65,128 Q95,133 130,124 L130,148 L0,148 Z" fill="#B8CCA8" fill-opacity=".22"/>
+          </svg>
+        </div>
+
+      </div><!-- /hero-scene -->
+
+      <!-- Hero footer: direction + projected low -->
+      <div class="hero-foot">
+        <div class="hero-foot-cell">
+          <span class="hfc-label">Direction</span>
+          <span class="hfc-value good" id="hero-direction-foot">Moving forward</span>
+        </div>
+        <div class="hero-foot-cell">
+          <span class="hfc-label">Projected Low</span>
+          <span class="hfc-value" id="risk-balance">—</span>
+        </div>
       </div>
 
-      <div class="topbar-r">
-        <div class="beacon" aria-hidden="true">
-          <span class="beacon-core"></span>
-          <span class="beacon-ring"></span>
+    </section><!-- /hero -->
+
+
+    <!-- §2  CONTRIBUTION ───────────────────────────── -->
+    <section class="card contrib-card" aria-label="DoorDash contribution">
+      <div class="card-head">
+        <div class="card-head-l">
+          <span class="card-eyebrow">Weekly Contribution</span>
+          <h2 class="card-title">DoorDash</h2>
         </div>
-        <div class="ts" id="last-updated">Loading…</div>
+        <span class="pill pill-gold" id="dd-week-tag">This week</span>
       </div>
-    </header>
-
-    <main class="feed">
-
-      <!-- HERO -->
-      <section class="hero" id="hero">
-        <div class="hero-accent"></div>
-
-        <div class="hero-body">
-          <div class="hero-top-row">
-            <div class="hero-label-group">
-              <div class="hero-sup">Current Balance</div>
-              <div class="hero-asof" id="hero-asof">—</div>
-            </div>
-
-            <div class="risk-badge" id="risk-level" data-level="LOW">—</div>
+      <div class="card-body">
+        <div class="contrib-main">
+          <div>
+            <div class="contrib-label">Earned this week</div>
+            <div class="earned-fig" id="dd-earned">—</div>
           </div>
-
-          <div class="hero-figure">
-            <div class="hero-curr">$</div>
-            <div class="hero-num" id="hero-balance">—</div>
-          </div>
-
-          <div class="hero-stats">
-            <div class="hero-stat">
-              <div class="hero-stat-k">Status</div>
-              <div class="hero-stat-v" id="hero-status-copy">—</div>
-            </div>
-            <div class="hero-stat">
-              <div class="hero-stat-k">Lowest Balance</div>
-              <div class="hero-stat-v" id="hero-lowest-balance">—</div>
-            </div>
-            <div class="hero-stat">
-              <div class="hero-stat-k">Lowest Date</div>
-              <div class="hero-stat-v" id="hero-lowest-date">—</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- RUNWAY -->
-      <section class="card card--chart">
-        <div class="card-head">
-          <div class="card-head-l">
-            <div class="card-sup">How does this look over 30 days?</div>
-            <div class="card-title">Runway</div>
-          </div>
-          <div class="chip" id="chart-range-tag">—</div>
-        </div>
-
-        <div class="chart-stage">
-          <div id="runway-chart" aria-live="polite"></div>
-        </div>
-
-        <div class="chart-summary" id="runway-summary">—</div>
-      </section>
-
-      <!-- UPCOMING TRANSACTIONS -->
-      <section class="card card--tx">
-        <div class="card-head">
-          <div class="card-head-l">
-            <div class="card-sup">What’s coming up next?</div>
-            <div class="card-title">Upcoming Events</div>
-          </div>
-          <div class="chip" id="tx-count-tag">—</div>
-        </div>
-
-        <div class="totals-band">
-          <div class="tot">
-            <div class="tot-k">Outflow</div>
-            <div class="tot-v tot-v--out" id="tx-total-out">—</div>
-          </div>
-          <div class="tot-line"></div>
-          <div class="tot">
-            <div class="tot-k">Inflow</div>
-            <div class="tot-v tot-v--in" id="tx-total-in">—</div>
-          </div>
-          <div class="tot-line"></div>
-          <div class="tot">
-            <div class="tot-k">Net</div>
-            <div class="tot-v" id="tx-net">—</div>
+          <div class="goal-block">
+            <div class="contrib-label">Contribution Goal</div>
+            <div class="goal-fig" id="dd-goal">—</div>
           </div>
         </div>
 
-        <div class="week-groups" id="tx-groups">
-          <div class="tx-empty">Loading upcoming transactions…</div>
-        </div>
-      </section>
-
-      <!-- WEEKLY GOAL -->
-      <section class="card card--dd">
-        <div class="card-head">
-          <div class="card-head-l">
-            <div class="card-sup">Weekly Goal</div>
-            <div class="card-title">DoorDash This Week</div>
-          </div>
-          <div class="chip chip--ember" id="dd-week-tag">—</div>
+        <!-- Dasher in-app balance row — hidden when zero -->
+        <div class="inapp-notice" id="dd-app-row" style="display:none">
+          <span class="inapp-text">In Dasher App</span>
+          <span class="inapp-amount" id="dd-app-amount">—</span>
+          <span class="inapp-aside">not deposited yet</span>
         </div>
 
-        <div class="card-body">
-          <div class="dd-row">
-            <div>
-              <div class="fig-sup">Earned</div>
-              <div class="fig-lg" id="dd-earned">—</div>
-            </div>
-
-            <div class="dd-goal">
-              <div class="fig-sup">Goal</div>
-              <div class="fig-sm" id="dd-goal">—</div>
-            </div>
-          </div>
-
-          <div class="bar-wrap">
-            <div
-              class="bar-track"
-              id="dd-progressbar"
-              role="progressbar"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-valuenow="0"
-              aria-label="DoorDash weekly progress"
-            >
-              <div class="bar-fill" id="dd-fill">
-                <div class="bar-sheen"></div>
-              </div>
-            </div>
-
-            <div class="bar-foot">
-              <span class="bar-pct" id="dd-pct">—</span>
-              <span class="bar-rem" id="dd-remaining">—</span>
-            </div>
-          </div>
+        <div class="prog-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="dd-progressbar">
+          <div class="prog-fill" id="dd-fill" style="width:0%"></div>
         </div>
-      </section>
+        <div class="prog-foot">
+          <span class="prog-pct" id="dd-pct">0%</span>
+          <span class="prog-rem" id="dd-remaining">—</span>
+        </div>
+      </div>
+    </section>
 
-      <div class="footer-note">Read only · synced from sheet</div>
-    </main>
-  </div>
 
-  <script src="app.js?v=5"></script>
+    <!-- §3  MONTHLY FLOW ───────────────────────────── -->
+    <section class="card" aria-label="Monthly flow summary">
+      <div class="card-head">
+        <div class="card-head-l">
+          <span class="card-eyebrow">Next 30 Days</span>
+          <h2 class="card-title">Monthly Flow</h2>
+        </div>
+        <span class="pill" id="tx-count-tag">—</span>
+      </div>
+      <div class="flow-cells">
+        <div class="flow-cell income-cell">
+          <div class="fc-label">Coming In</div>
+          <div class="fc-amount in" id="tx-total-in">—</div>
+          <div class="fc-desc">income &amp; deposits</div>
+        </div>
+        <div class="flow-cell expense-cell">
+          <div class="fc-label">Going Out</div>
+          <div class="fc-amount out" id="tx-total-out">—</div>
+          <div class="fc-desc">bills &amp; payments</div>
+        </div>
+      </div>
+      <div class="flow-net-row">
+        <span class="flow-net-label">Net for the period</span>
+        <span class="flow-net-amount" id="tx-net">—</span>
+      </div>
+    </section>
+
+
+    <!-- §4  FINANCIAL OUTLOOK ──────────────────────── -->
+    <section class="card" aria-label="30-day financial outlook">
+      <div class="card-head">
+        <div class="card-head-l">
+          <span class="card-eyebrow">The Shape of the Month</span>
+          <h2 class="card-title">Financial Outlook</h2>
+        </div>
+        <span class="pill" id="chart-range-tag">—</span>
+      </div>
+      <div class="chart-area" id="runway-chart" aria-label="Balance forecast chart">
+        <!-- Populated by renderChart() in app.js -->
+      </div>
+    </section>
+
+
+    <!-- §5  7-DAY FORECAST ─────────────────────────── -->
+    <section class="card" aria-label="7-day forecast">
+      <div class="card-head">
+        <div class="card-head-l">
+          <span class="card-eyebrow">What's Ahead</span>
+          <h2 class="card-title">7-Day Forecast</h2>
+        </div>
+        <span class="pill" id="events-window-tag">Next 7 days</span>
+      </div>
+      <div class="fx-col-head" aria-hidden="true">
+        <span>Event</span>
+        <span class="fxh-r">Amount</span>
+        <span class="fxh-r">Balance</span>
+      </div>
+      <ul class="fx-list" id="events-list" aria-label="Events in next 7 days">
+        <!-- Populated by render7Day() -->
+      </ul>
+    </section>
+
+
+    <!-- §6  14-DAY FORECAST ────────────────────────── -->
+    <section class="card" aria-label="14-day forecast">
+      <div class="card-head">
+        <div class="card-head-l">
+          <span class="card-eyebrow">Details</span>
+          <h2 class="card-title">14-Day Forecast</h2>
+        </div>
+        <span class="pill" id="tx-list-count">—</span>
+      </div>
+      <div class="fx-col-head" aria-hidden="true">
+        <span>Event</span>
+        <span class="fxh-r">Amount</span>
+        <span class="fxh-r">Balance</span>
+      </div>
+      <ul class="fx-list" id="tx-list" aria-label="Transactions in next 14 days">
+        <!-- Populated by render14Day() -->
+      </ul>
+    </section>
+
+
+    <footer class="page-footer">
+      <span id="footer-date">Money Map</span>
+    </footer>
+
+  </main><!-- /feed -->
+
+  <script src="app.js"></script>
 </body>
 </html>
