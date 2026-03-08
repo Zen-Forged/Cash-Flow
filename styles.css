@@ -382,8 +382,7 @@ body {
 .chart-area svg, .runway-svg { display: block; width: 100%; }
 
 /* ══════════════════════════════════════════════════════════════
-   §5 + §6  SHARED FORECAST TABLE
-   Used by both 7-Day Forecast and 14-Day Forecast.
+   §5  45-DAY FORECAST TABLE
 ══════════════════════════════════════════════════════════════ */
 .fx-col-head {
   display: grid;
@@ -438,6 +437,18 @@ body {
 }
 .fxi-bal.low   { color: var(--caution); }
 .fxi-bal.alert { color: var(--clay); }
+
+/* Week divider header */
+.fx-week-head {
+  padding: 6px 18px 5px;
+  font-family: var(--num); font-size: .5rem;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--ink-4);
+  background: var(--sf-mist);
+  border-top: 1px solid var(--bd-2);
+  border-bottom: 1px solid var(--bd-2);
+  list-style: none;
+}
+.fx-week-head:first-child { border-top: none; }
 
 /* Empty state row */
 .fx-empty {

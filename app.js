@@ -99,7 +99,7 @@ function loadSettings(rows) {
   const balanceAsOf = gd("Balance As Of Date");
   const windowStart = balanceAsOf ? new Date(balanceAsOf) : new Date();
   const windowEnd   = new Date(windowStart);
-  windowEnd.setDate(windowEnd.getDate() + 30);
+  windowEnd.setDate(windowEnd.getDate() + 45);
 
   return {
     checkingBalance:     gn("Checking Balance"),
@@ -187,7 +187,7 @@ function deriveRisk(txs, windowTxs, settings) {
 function buildChartPoints(txs, settings) {
   const sorted = [...txs].sort((a, b) => a.date - b.date);
   const points = [];
-  for (let d = 0; d <= 30; d++) {
+  for (let d = 0; d <= 45; d++) {
     const dt     = new Date(settings.windowStart);
     dt.setDate(dt.getDate() + d);
     const lastTx = sorted.filter(tx => tx.date <= dt).pop();
@@ -509,51 +509,55 @@ function renderRunwayChart(chartPoints, settings) {
 }
 
 
-/* ── §5  7-Day Forecast ── */
-function render7Day(windowTxs, settings) {
-  const list = $("events-list");
-  if (!list) return;
-
-  const cutoff = new Date(settings.windowStart);
-  cutoff.setDate(cutoff.getDate() + 7);
-
-  const items = [...windowTxs]
-    .filter(tx => tx.date <= cutoff)
-    .sort((a, b) => a.date - b.date);
-
-  setText("events-window-tag",
-    fmtShort(settings.windowStart) + " \u2013 " + fmtShort(cutoff)
-  );
-
-  list.innerHTML = "";
-  if (!items.length) {
-    list.innerHTML = `<li class="fx-empty">No events in the next 7 days.</li>`;
-    return;
-  }
-  items.forEach((tx, idx) => list.appendChild(buildFxRow(tx, idx, settings)));
+/* ── §5  45-Day Forecast ── */
+function getWeekMonday(date) {
+  const d   = new Date(date);
+  const day = d.getDay(); // 0 = Sun
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-
-/* ── §6  14-Day Forecast ── */
-function render14Day(windowTxs, settings) {
-  const list = $("tx-list");
+function render45Day(windowTxs, settings) {
+  const list = $("tx-list-45");
   if (!list) return;
 
   const cutoff = new Date(settings.windowStart);
-  cutoff.setDate(cutoff.getDate() + 14);
+  cutoff.setDate(cutoff.getDate() + 45);
 
   const items = [...windowTxs]
     .filter(tx => tx.date <= cutoff)
     .sort((a, b) => a.date - b.date);
 
-  setText("tx-list-count", items.length + " items");
+  setText("tx-45-count", items.length + " items");
 
   list.innerHTML = "";
   if (!items.length) {
-    list.innerHTML = `<li class="fx-empty">No transactions in the next 14 days.</li>`;
+    list.innerHTML = `<li class="fx-empty">No transactions in the next 45 days.</li>`;
     return;
   }
-  items.forEach((tx, idx) => list.appendChild(buildFxRow(tx, idx, settings)));
+
+  // Group transactions into Mon–Sun weeks
+  const weeks = new Map();
+  items.forEach(tx => {
+    const monday = getWeekMonday(tx.date);
+    const key    = monday.getTime();
+    if (!weeks.has(key)) weeks.set(key, { monday, txs: [] });
+    weeks.get(key).txs.push(tx);
+  });
+
+  let rowIdx = 0;
+  weeks.forEach(({ monday, txs }) => {
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+
+    const header = document.createElement("li");
+    header.className = "fx-week-head";
+    header.textContent = fmtShort(monday) + " \u2013 " + fmtShort(sunday);
+    list.appendChild(header);
+
+    txs.forEach(tx => list.appendChild(buildFxRow(tx, rowIdx++, settings)));
+  });
 }
 
 
@@ -743,8 +747,7 @@ async function init() {
     renderDoorDash(settings);              // §2
     renderFlowGrid(windowTxs, settings);   // §3
     renderRunwayChart(chartPts, settings); // §4
-    render7Day(windowTxs, settings);       // §5
-    render14Day(windowTxs, settings);      // §6
+    render45Day(windowTxs, settings);      // §5
 
     window.__moneyMap = { settings, windowTxs, riskData, chartPts };
     console.log("[MoneyMap] Ready");

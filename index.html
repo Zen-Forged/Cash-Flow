@@ -223,42 +223,22 @@
     </section>
 
 
-    <!-- §5  7-DAY FORECAST ─────────────────────────── -->
-    <section class="card" aria-label="7-day forecast">
+    <!-- §5  45-DAY FORECAST ─────────────────────────── -->
+    <section class="card" aria-label="45-day forecast">
       <div class="card-head">
         <div class="card-head-l">
           <span class="card-eyebrow">What's Ahead</span>
-          <h2 class="card-title">7-Day Forecast</h2>
+          <h2 class="card-title">45-Day Forecast</h2>
         </div>
-        <span class="pill" id="events-window-tag">Next 7 days</span>
+        <span class="pill" id="tx-45-count">—</span>
       </div>
       <div class="fx-col-head" aria-hidden="true">
         <span>Event</span>
         <span class="fxh-r">Amount</span>
         <span class="fxh-r">Balance</span>
       </div>
-      <ul class="fx-list" id="events-list" aria-label="Events in next 7 days">
-        <!-- Populated by render7Day() -->
-      </ul>
-    </section>
-
-
-    <!-- §6  14-DAY FORECAST ────────────────────────── -->
-    <section class="card" aria-label="14-day forecast">
-      <div class="card-head">
-        <div class="card-head-l">
-          <span class="card-eyebrow">Details</span>
-          <h2 class="card-title">14-Day Forecast</h2>
-        </div>
-        <span class="pill" id="tx-list-count">—</span>
-      </div>
-      <div class="fx-col-head" aria-hidden="true">
-        <span>Event</span>
-        <span class="fxh-r">Amount</span>
-        <span class="fxh-r">Balance</span>
-      </div>
-      <ul class="fx-list" id="tx-list" aria-label="Transactions in next 14 days">
-        <!-- Populated by render14Day() -->
+      <ul class="fx-list" id="tx-list-45" aria-label="Transactions in next 45 days">
+        <!-- Populated by render45Day() -->
       </ul>
     </section>
 
